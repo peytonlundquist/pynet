@@ -1,9 +1,27 @@
 import random
-from container2 import *
+from container import *
 import multiprocessing
-from numpy.random import default_rng
-random.randint()
+import numpy as np
+import random
 
-for index in range(49153, 49252):
-   Node(index-2, index, index+2)
-   
+PORT_MIN = 49153
+PORT_MAX = 49252
+
+# Create a pool of ports in random order 
+portPool = list(range(PORT_MIN, PORT_MAX))
+random.shuffle(portPool) 
+
+# Assign random port to self and peers for each node
+for index in portPool:
+    myport = index
+    port1 = random.choice(portPool)
+    port2 = random.choice(portPool)
+    
+    # Reselect peer port if it is also myport
+    while myport == port1 or myport == port2: 
+        port1 = random.choice(portPool)
+        port2 = random.choice(portPool)
+            
+    # Create a node
+    Node(myport, port1, port2)
+
