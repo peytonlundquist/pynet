@@ -1,4 +1,3 @@
-#!/usr/bin/python3           # This is server.py file
 from re import S
 import socket
 import sys
