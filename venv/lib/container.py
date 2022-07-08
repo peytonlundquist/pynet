@@ -124,25 +124,39 @@ class ClientThread(threading.Thread):
                 if "Refused " in msgrecv:                                                       
                     msgList = msgrecv.split()
                     self.bc = int(msgList[5])                  
-                print("Peer " +  str(self.myport) + ": (Client-thread) Recieved: " + msgrecv + " from hitting peer at " + str(peer.port))
+                #print("Peer " +  str(self.myport) + ": (Client-thread) Recieved: " + msgrecv + " from hitting peer at " + str(peer.port))
             except ConnectionRefusedError:
-                print("Peer " +  str(self.myport) + ": (Client-thread): Peer at " + str(peer.host) + ", " + str(peer.port) + " appears down (refused)")
+                True
+                #print("Peer " +  str(self.myport) + ": (Client-thread): Peer at " + str(peer.host) + ", " + str(peer.port) + " appears down (refused)")
             except ConnectionAbortedError:
-                print("Peer " +  str(self.myport) + ": (Client-thread): Peer at " + str(peer.host) + ", " + str(peer.port) + " appears down (abort)")
-    
-class Node:
+                True
+                #print("Peer " +  str(self.myport) + ": (Client-thread): Peer at " + str(peer.host) + ", " + str(peer.port) + " appears down (abort)")
+                
+class MonitorThread(threading.Thread):
+        def __init__(self, serverThread, clientThread):
+            threading.Thread.__init__(self)
+            self.serverThread = serverThread
+            self.clientThread = clientThread
+        
+        def run(self):
+            # Thread which holds a light consensus
+            while True:
+                if(self.serverThread.getbc() > self.clientThread.getbc()):
+                    self.clientThread.setbc(self.serverThread.getbc())
+                    
+                if(self.serverThread.getbc() < self.clientThread.getbc()):
+                    self.serverThread.setbc(self.clientThread.getbc())             
+            
+class Node:                  
     def __init__(self, myport, port1, port2):
         bc = 0
         peerList = NodeList(Address(socket.gethostname(), port1), Address(socket.gethostname(), port2))
         server = ServerThread(myport, bc)
-        server.start()
         client = ClientThread(peerList, bc, myport)
+        monitor = MonitorThread(server, client)
+        server.start()
         client.start()
+        monitor.start()
         
-        # Main thread which holds a light consensus
-        while True:
-            if(server.getbc() > client.getbc()):
-                client.setbc(server.getbc())
-                
-            if(client.getbc() > server.getbc()):
-                server.setbc(client.getbc())
+        
+        
