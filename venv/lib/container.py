@@ -15,8 +15,6 @@ import json
 def dict_hash(dictionary: Dict[str, Any]) -> str:
     """MD5 hash of a dictionary."""
     dhash = hashlib.md5()
-    # We need to sort arguments so {'a': 1, 'b': 2} is
-    # the same as {'b': 2, 'a': 1}
     encoded = json.dumps(dictionary, sort_keys=True).encode()
     dhash.update(encoded)
     return dhash.hexdigest()
@@ -75,7 +73,6 @@ class ServerThread(threading.Thread):
             recvmsg = recvmsg.decode('ascii')                                       
             print("Peer " +  str(self.myport) + ": (Server-thread) Recieved [" + recvmsg + "] from a client connecting to us")
             
-
             #
             # This is our deterministic protocol logic for incoming requests
             #
@@ -87,9 +84,9 @@ class ServerThread(threading.Thread):
                 if int(blockNumber) >= len(self.bc):                    
                     reply = "Added block " + blockNumber + ". [Signed by " + str(self.myport) + "]"
                     self.bc[blockNumber] = blockValue
-                    print("Peer " +  str(self.myport) + ": (Server-thread) Sending message: [" + reply + "]")
+                    print("Peer " +  str(self.myport) + ": (Server-thread) Sending message: [" + reply + "]. Hash: " + dict_hash(self.bc))
                 else:
-                    # If a we were told to add a block behind our most recent block, we reject and ask them to skip forward to us
+                    # If we were told to add a block behind our most recent block, we reject and ask them to skip forward to us
                     reply = "Refused block " + blockNumber + ": Behind state. [Signed by " + str(self.myport) + "]"
                     print("Peer " +  str(self.myport) + ": (Server-thread) Refused block proposal" )
                 clientsocket.send(reply.encode('ascii')) 
@@ -122,30 +119,21 @@ class ClientThread(threading.Thread):
         behind = False
         msgrecv = ""
         peer = self.peerList.next() 
-        while True:
-            
+        while True:          
             if(behind == False):
-                # Rotate through list of peers
-                                                                
-                # Temporary delay for output analysis
-                
-                # Mining / Computing
                 rng = np.random.default_rng()
-                num = rng.integers(60)
+                num = rng.integers(20)
                 time.sleep(num)
                 msg = "Mined block " + str(len(self.bc)) + " Value " + str(num)
                 print("Peer " +  str(self.myport) + ": (Client-thread) " + msg)
                 self.bc[str(len(self.bc))] = str(num)
-                if verbose:
+                if self.verbose:
                     print("Peer " +  str(self.myport) + ": (Client-thread) Full-chain: ")
                     print(self.bc)
                 else:
                     print("Peer " +  str(self.myport) + ": (Client-thread) Hash of BC: " + dict_hash(self.bc))
-                    
-                    
             else:
-                msg = "Request blockchain"
-                
+                msg = "Request blockchain"    
             try:
                 # Prepare socket communication
                 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)                   
@@ -164,11 +152,9 @@ class ClientThread(threading.Thread):
                 s.close()               
                 #print("Peer " +  str(self.myport) + ": (Client-thread) Recieved: " + msgrecv + " from hitting peer at " + str(peer.port))
             except ConnectionRefusedError:
-                True
                 print("Peer " +  str(self.myport) + ": (Client-thread): Peer at " + str(peer.host) + ", " + str(peer.port) + " appears down (refused)")
                 peer = self.peerList.next() 
             except ConnectionAbortedError:
-                True
                 print("Peer " +  str(self.myport) + ": (Client-thread): Peer at " + str(peer.host) + ", " + str(peer.port) + " appears down (abort)")
                 peer = self.peerList.next() 
 
@@ -178,17 +164,24 @@ class ClientThread(threading.Thread):
             #            
             
             # A peer may refuse our block number because we are behind in the blockchain. In such a case we accept the higher block chain
-            if behind is True:
-                self.bc = json.loads(msgrecv.decode('utf-8'))
-                print("Peer " +  str(self.myport) + ": JSON Recieved. State updated: " + dict_hash(self.bc))
-                if verbose:
-                    print(self.bc)
+            try:
+                if behind is True:
+                    self.bc = json.loads(msgrecv.decode('utf-8'))
+                        
+                    print("Peer " +  str(self.myport) + ": JSON Recieved. State updated: " + dict_hash(self.bc))
+                    if self.verbose:
+                        print(self.bc)
+                    behind = False
+                else:
+                    if "Refused" in msgrecv:   # Refused: Behind/Disagree                                                    
+                        if "Behind" in msgrecv:
+                            behind = True
+                        print("Peer " +  str(self.myport) + ": Recieved [" + msgrecv + "] from Peer " + str(peer.port))           
+            except TypeError:
+                print("Peer " +  str(self.myport) + ": Lost connection during process with Peer " + str(peer.port))
                 behind = False
-            else:
-                if "Refused" in msgrecv:   # Refused: Behind/Disagree                                                    
-                    if "Behind" in msgrecv:
-                        behind = True
-                    print("Peer " +  str(self.myport) + ": Recieved [" + msgrecv + "] from Peer " + str(peer.port))           
+
+            
 
 class Node:                  
     def __init__(self, myport, port1, port2, verbose):
