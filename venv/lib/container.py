@@ -152,10 +152,13 @@ class ClientThread(threading.Thread):
                 #print("Peer " +  str(self.myport) + ": (Client-thread) Recieved: " + msgrecv + " from hitting peer at " + str(peer.port))
             except ConnectionRefusedError:
                 True
-                #print("Peer " +  str(self.myport) + ": (Client-thread): Peer at " + str(peer.host) + ", " + str(peer.port) + " appears down (refused)")
+                print("Peer " +  str(self.myport) + ": (Client-thread): Peer at " + str(peer.host) + ", " + str(peer.port) + " appears down (refused)")
+                peer = self.peerList.next() 
             except ConnectionAbortedError:
                 True
-                #print("Peer " +  str(self.myport) + ": (Client-thread): Peer at " + str(peer.host) + ", " + str(peer.port) + " appears down (abort)")
+                print("Peer " +  str(self.myport) + ": (Client-thread): Peer at " + str(peer.host) + ", " + str(peer.port) + " appears down (abort)")
+                peer = self.peerList.next() 
+
                 
             #
             # This is our deterministic protocol logic for incoming responses
