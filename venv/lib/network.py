@@ -5,7 +5,7 @@ import numpy as np
 import random
 
 PORT_MIN = 49153
-PORT_MAX = 49252
+PORT_MAX = 49163
 
 # Create a pool of ports in random order 
 portPool = list(range(PORT_MIN, PORT_MAX))
@@ -23,5 +23,5 @@ for index in portPool:
         port2 = random.choice(portPool)
             
     # Create a node
-    Node(myport, port1, port2)
+    Node(myport, port1, port2, False)
 
