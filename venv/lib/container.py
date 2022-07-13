@@ -81,7 +81,7 @@ class ServerThread(threading.Thread):
                     print("Peer " +  str(self.myport) + ": (Server-thread) Refused block proposal: Peer is behind state." )
                     clientsocket.send(reply.encode('ascii'))
                 else:
-                    reply = "Refused block " + blockNumber + ": Disagreed State. Differing... [Signed by " + str(self.myport) + "]"
+                    reply = "Refused block " + blockNumber + ": Disagreed State. Deffering... [Signed by " + str(self.myport) + "]"
                     print("Peer " +  str(self.myport) + ": (Server-thread) Refused block proposal: Disagreed state: " )
                     clientsocket.send(reply.encode('ascii'))
                     recvmsg = clientsocket.recv(4096)
@@ -172,7 +172,21 @@ class ClientThread(threading.Thread):
                 print("Peer " +  str(self.myport) + ": (Client-thread) Broken connection during process with Peer " + str(peer.port))
                 behind = False
 
-            
+class MonitorThread(threading.Thread):
+        def __init__(self, serverThread, clientThread):
+            threading.Thread.__init__(self)
+            self.serverThread = serverThread
+            self.clientThread = clientThread
+        
+        def run(self):
+            True
+            while True:
+                if(len(self.serverThread.getbc()) > len(self.clientThread.getbc())):
+                    self.clientThread.setbc(self.serverThread.getbc())
+                    
+                if(len(self.serverThread.getbc()) < len(self.clientThread.getbc())):
+                    self.serverThread.setbc(self.clientThread.getbc())     
+                       
 class Node:                  
     def __init__(self, myport, port1, port2, verbose):
         bc = {}
@@ -181,6 +195,8 @@ class Node:
         client = ClientThread(peerList, bc, myport, verbose)
         server.start()
         client.start()
+        monitor = MonitorThread(server, client)
+        monitor.start()
         
         
         
