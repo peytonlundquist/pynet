@@ -2,10 +2,22 @@ import json
 from re import S
 import socket
 import sys
+from tabnanny import verbose
 import threading
 import time
 import atexit
 import numpy as np
+from typing import Dict, Any
+import hashlib
+import json
+
+# https://www.doc.ic.ac.uk/~nuric/coding/how-to-hash-a-dictionary-in-python.html
+def dict_hash(dictionary: Dict[str, Any]) -> str:
+    """MD5 hash of a dictionary."""
+    dhash = hashlib.md5()
+    encoded = json.dumps(dictionary, sort_keys=True).encode()
+    dhash.update(encoded)
+    return dhash.hexdigest()
 
 # Host and port
 class Address:
@@ -27,160 +39,185 @@ class NodeList:
         self.current_node = self.list[self.index]
         return self.current_node
 
+
 # Thread that responds to incoming peers for information consensus
 class ServerThread(threading.Thread):
-    def __init__(self, myport, bc):
+    def __init__(self, myport, bc, clientThread, verbose):
         threading.Thread.__init__(self)
         self.myport = myport
         self.bc = bc
+        self.verbose = verbose
+        self.clientThread = clientThread
 
     def setbc(self, x):
         self.bc = x
     
     def getbc(self):
         return self.bc  
-    
+
     def run(self):
-        # Find my host name, usually localhost
         host = socket.gethostname()                                                     
-        # Set up socket
         serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)                
-        # Taking the port specified and attaching this node to it for requests
         serversocket.bind((host, self.myport))                                          
-        # Queue up to 5 requests
         serversocket.listen(5)                                                          
-        print("Peer " +  str(self.myport) + ": (Server-thread) Propping up on " + str(host) + ", " + str(self.myport))                  
-        while True:
-            # Block thread until a client attempts to connect, then accept and open communicatoin line
-            clientsocket, addr = serversocket.accept()                                  
-            # Expect a message from a client who requests, limiting to 1024 bytes
-            recvmsg = clientsocket.recv(1024)                                           
-            # The message recieved needs to be decoded
-            recvmsg = recvmsg.decode('ascii')                                       
-            print("Peer " +  str(self.myport) + ": (Server-thread) Recieved " + recvmsg + " from a client connecting to us")
-            
-            
-            
-            
-            
-            #
-            # This is our deterministic protocol logic for incoming requests
-            #
-            if "Mined" in recvmsg:
-                # String manipulation for simplicity of pickiling                                                       
-                msgList = recvmsg.split()
-                blockNumber = msgList[2]
-                blockValue = msgList[4]
-                if int(blockNumber) >= len(self.bc):                    
-                    reply = "Added block " + blockNumber + ". [Signed by " + str(self.myport) + "]"
-                    self.bc[blockNumber] = blockValue
-                    print(reply)
-                else:
-                    # If a we were told to add a block behind our most recent block, we reject and ask them to skip forward to us
-                    reply = "Refused block " + blockNumber + ": Behind state. [Signed by " + str(self.myport) + "]"
-                    print("Peer " +  str(self.myport) + ": (Server-thread) Refused block proposal" )
-                clientsocket.send(reply.encode('ascii')) 
-            elif "Request" in recvmsg:
-                reply = json.dumps(self.bc).encode('utf-8')
-                print(reply)
-                clientsocket.send(reply)                                    
+        print("Peer " +  str(self.myport) + ": (Server-thread) Propping up on " + str(host) + ", " + str(self.myport))               
+           
+        while True: 
+            try:
+                clientsocket, addr = serversocket.accept()          
+                recvmsg = clientsocket.recv(4096)                                           
+                recvmsg = recvmsg.decode('ascii')                                       
+                print("Peer " +  str(self.myport) + ": (Server-thread) Recieved [" + recvmsg + "] from a client connecting to us")
 
-            # Encode reply
-            # Close the communication line
-            clientsocket.close()                                                        
+                if "Mined" in recvmsg:
+                    msgList = recvmsg.split()
+                    blockNumber = msgList[2]
+                    blockValue = msgList[4]
+                    chainHash = msgList[6]
 
+                    if int(blockNumber) == len(self.bc):
+                        gossipMessage = recvmsg + " [Signed by " + str(self.myport) + "]"  
+                        if chainHash != dict_hash(self.bc):
+                            reply = "Refused block " + blockNumber + ": Disagreed chain hashcode. Deffering... [Signed by " + str(self.myport) + "]"
+                            print("Peer " +  str(self.myport) + ": (Server-thread) Refused block proposal: Disagreed hashcode")
+                            clientsocket.send(reply.encode('ascii'))
+                            recvmsg = clientsocket.recv(4096)
+                            
+                            self.bc = json.loads(recvmsg.decode('utf-8'))  
+                            print("Peer " +  str(self.myport) + ": (Server-thread) JSON Recieved. State updated: " + dict_hash(self.bc))
+                            if self.verbose:
+                                print("Peer " +  str(self.myport) + ": " + str(self.bc))
 
+                        else:
+                            reply = "Added block " + blockNumber + ". [Signed by " + str(self.myport) + "]"
+                            self.bc[blockNumber] = blockValue
+                            print("Peer " +  str(self.myport) + ": (Server-thread) Sending message: [" + reply + "]. Hash: " + dict_hash(self.bc))
+                            clientsocket.send(reply.encode('ascii'))
 
-
-
-
-
+                        for i in range(0, 1):
+                            self.clientThread.gossip(gossipMessage, addr)
+                            print("Peer " +  str(self.myport) + ": (Server-thread) Gossip block")
+                    
+                    
+                    elif int(blockNumber) < len(self.bc):
+                        reply = "Refused block " + blockNumber + ": Behind state. [Signed by " + str(self.myport) + "]"
+                        print("Peer " +  str(self.myport) + ": (Server-thread) Refused block proposal: Peer is behind state." )
+                        clientsocket.send(reply.encode('ascii'))
+                    else:
+                        reply = "Refused block " + blockNumber + ": Disagreed State. Our block state = " + str(len(self.bc)) + ". Deffering... [Signed by " + str(self.myport) + "]"
+                        print("Peer " +  str(self.myport) + ": (Server-thread) Refused block proposal: Disagreed state: Our block state = " + str(len(self.bc)) )
+                        clientsocket.send(reply.encode('ascii'))
+                        recvmsg = clientsocket.recv(4096)
+                        self.bc = json.loads(recvmsg.decode('utf-8'))    
+                        print("Peer " +  str(self.myport) + ": (Server-thread) JSON Recieved. State updated: " + dict_hash(self.bc))
+                        if self.verbose:
+                            print("Peer " +  str(self.myport) + ": " + str(self.bc))
+                        
+                elif "Request" in recvmsg:
+                    reply = json.dumps(self.bc).encode('utf-8')
+                    print("Peer " +  str(self.myport) + ": (Server-thread) Sending JSON of BC to requesting peer. Hash: " + dict_hash(self.bc))
+                    clientsocket.send(reply)                                    
+                clientsocket.close()                                                        
+            except json.JSONDecodeError:
+                print("Peer " +  str(self.myport) + ": (Server-thread) JSON Decoding Error")   
+              
 
 # Thread that seeks out other peers for information consensus
 class ClientThread(threading.Thread):
-    def __init__(self, peerList, bc, myport):
+    def __init__(self, peerList, bc, myport, verbose):
         threading.Thread.__init__(self)
         self.peerList = peerList
         self.bc = bc
         self.myport = myport
+        self.verbose = verbose
     
     def setbc(self, x):
         self.bc = x
         
     def getbc(self):
         return self.bc  
-        
+    
+    def gossip(self, msg, sender):
+        try:
+            peer = self.peerList.next() 
+            if(sender != peer.port):
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)                   
+                s.settimeout(20)                                                        
+                s.connect((peer.host, peer.port))                                         
+                s.send(msg.encode('ascii'))
+                s.close
+                print("Peer " +  str(self.myport) + ": (Client-thread) Sent gossip")
+        except ConnectionRefusedError:
+                print("Peer " +  str(self.myport) + ": (Client-thread): Peer at " + str(peer.host) + ", " + str(peer.port) + " appears down (refused)")
+        except ConnectionAbortedError:
+                print("Peer " +  str(self.myport) + ": (Client-thread): Peer at " + str(peer.host) + ", " + str(peer.port) + " appears down (abort)")
+
     def run(self):
         behind = False
         msgrecv = ""
         peer = self.peerList.next() 
-        while True:
-            
+        while True:          
             if(behind == False):
-                # Rotate through list of peers
-                                                                
-                # Temporary delay for output analysis
-                
-                # Mining / Computing
                 rng = np.random.default_rng()
-                num = rng.integers(15)
+                num = rng.integers(10)
                 time.sleep(num)
-                msg = "Mined block " + str(len(self.bc)) + " Value " + str(num)
-                print(msg)
+                msg = "Mined block " + str(len(self.bc)) + " Value " + str(num) + " Hash: " + dict_hash(self.bc) +" [Signed by " + str(self.myport) + "]"
+                print("Peer " +  str(self.myport) + ": (Client-thread) " + msg)
                 self.bc[str(len(self.bc))] = str(num)
-                print("BC: ")
-                print(self.bc)
+                if self.verbose:
+                    print("Peer " +  str(self.myport) + ": (Client-thread) Full-chain: " + dict_hash(self.bc))
+                    print("Peer " +  str(self.myport) + ": " + str(self.bc))
+                else:
+                    print("Peer " +  str(self.myport) + ": (Client-thread) Hash of BC: " + dict_hash(self.bc))
             else:
-                msg = "Request blockchain"
-                
+                msg = "Request blockchain"                
             try:
-                # Prepare socket communication
                 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)                   
-                # Socket will timeout after 20 seconds
                 s.settimeout(20)                                                        
-                # Connect to peer
                 s.connect((peer.host, peer.port))                                         
-                # Make request to peer
                 s.send(msg.encode('ascii'))                                             
-                # Expect a reply
-                msgrecv = s.recv(1024) 
-                # Decode
+                msgrecv = s.recv(4096) 
                 if not behind:
-                    msgrecv = msgrecv.decode('ascii')                                                 
-                # Close socket
-                s.close()               
-                #print("Peer " +  str(self.myport) + ": (Client-thread) Recieved: " + msgrecv + " from hitting peer at " + str(peer.port))
+                    msgrecv = msgrecv.decode('ascii')                                                                
+                if behind is True:
+                    self.bc = json.loads(msgrecv.decode('utf-8'))            
+                    print("Peer " +  str(self.myport) + ": (Client-thread) JSON Recieved. State updated: " + dict_hash(self.bc))
+                    if self.verbose:
+                        print("Peer " +  str(self.myport) + ": " + str(self.bc))
+                    behind = False
+                else:
+                    if "Refused" in msgrecv:   # Refused: Behind/Disagree  
+                        print("Peer " +  str(self.myport) + ": (Client-thread) Recieved [" + msgrecv + "] from Peer " + str(peer.port))                                                  
+                        if "Behind" in msgrecv:
+                            behind = True                      
+                        if "Disagreed" in msgrecv:
+                            reply = json.dumps(self.bc).encode('utf-8')
+                            print("Peer " +  str(self.myport) + ": (Client-thread) Sending JSON of BC to requesting peer. Hash: " + dict_hash(self.bc))
+                            s.send(reply)
+                            if self.verbose:
+                                print("Peer " +  str(self.myport) + ": " + str(self.bc))
+
+                    s.close() 
+                    if "Agreed" in msgrecv:
+                        self.gossip(msg, peer.port)                  
+            except TypeError:
+                print("Peer " +  str(self.myport) + ": (Client-thread) Lost connection during process with Peer " + str(peer.port))
+                behind = False
+            except BrokenPipeError:
+                print("Peer " +  str(self.myport) + ": (Client-thread) Broken connection during process with Peer " + str(peer.port))
+                behind = False
             except ConnectionRefusedError:
-                True
-                print("Peer " +  str(self.myport) + ": (Client-thread): Peer at " + str(peer.host) + ", " + str(peer.port) + " appears down (refused)")
+                print("Peer " +  str(self.myport) + ": (Client-thread) Peer at " + str(peer.host) + ", " + str(peer.port) + " appears down (refused)")
                 peer = self.peerList.next() 
             except ConnectionAbortedError:
-                True
-                print("Peer " +  str(self.myport) + ": (Client-thread): Peer at " + str(peer.host) + ", " + str(peer.port) + " appears down (abort)")
+                print("Peer " +  str(self.myport) + ": (Client-thread) Peer at " + str(peer.host) + ", " + str(peer.port) + " appears down (abort)")
+                peer = self.peerList.next() 
+            except socket.timeout:
+                print("Peer " +  str(self.myport) + ": (Client-thread) Peer at " + str(peer.host) + ", " + str(peer.port) + " timed out")
                 peer = self.peerList.next() 
 
-                
-            #
-            # This is our deterministic protocol logic for incoming responses
-            #            
-            
-            # A peer may refuse our block number because we are behind in the blockchain. In such a case we accept the higher block chain
-            if behind is True:
-                print("JSON Recieved")
-                self.bc = json.loads(msgrecv.decode('utf-8'))
-                print(self.bc)
-                behind = False
-            else:
-                if "Refused" in msgrecv:   # Refused: Behind/Disagree                                                    
-                    if "Behind" in msgrecv:
-                        behind = True
-            print(msgrecv)
 
-                    
 
-                   
-                
-                
 class MonitorThread(threading.Thread):
         def __init__(self, serverThread, clientThread):
             threading.Thread.__init__(self)
@@ -189,23 +226,23 @@ class MonitorThread(threading.Thread):
         
         def run(self):
             True
-            # Thread which holds a light consensus
-            # while True:
-                # if(self.serverThread.getbc() > self.clientThread.getbc()):
-                #     self.clientThread.setbc(self.serverThread.getbc())
+            while True:
+                if(len(self.serverThread.getbc()) > len(self.clientThread.getbc())):
+                    self.clientThread.setbc(self.serverThread.getbc())
                     
-                # if(self.serverThread.getbc() < self.clientThread.getbc()):
-                #     self.serverThread.setbc(self.clientThread.getbc())             
-            
+                if(len(self.serverThread.getbc()) < len(self.clientThread.getbc())):
+                    self.serverThread.setbc(self.clientThread.getbc())     
+
+
 class Node:                  
-    def __init__(self, myport, port1, port2):
+    def __init__(self, myport, port1, port2, verbose):
         bc = {}
         peerList = NodeList(Address(socket.gethostname(), port1), Address(socket.gethostname(), port2))
-        server = ServerThread(myport, bc)
-        client = ClientThread(peerList, bc, myport)
+        client = ClientThread(peerList, bc, myport, verbose)
+        server = ServerThread(myport, bc, client, verbose)
         monitor = MonitorThread(server, client)
-        server.start()
         client.start()
+        server.start()
         monitor.start()
         
         
