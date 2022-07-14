@@ -23,5 +23,5 @@ for index in portPool:
         port2 = random.choice(portPool)
             
     # Create a node
-    Node(myport, port1, port2, False)
+    Node(myport, port1, port2, True)
 
