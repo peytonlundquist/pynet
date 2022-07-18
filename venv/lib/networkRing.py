@@ -4,13 +4,14 @@ import multiprocessing
 import numpy as np
 import random
 
+node_list = []
 
-            
 # Create a node
-Node(8000, 8002, 8001, True)
-Node(8001, 8003, 8002, True)
-Node(8002, 8004, 8003, True)
-Node(8003, 8000, 8004, True)
-Node(8004, 8001, 8000, True)
+for i in range(8000, 8010):
+    print("My port: " + str(i) + ". Peers: " + str(i+2) + ", " + str(i+1))
+    node_list.append(Node(i, i+2, i+1, False))
+Node(8010, 8000, 8005, False)
+print("My port: " + str(8010) + ". Peers: " + str(8000) + ", " + str(8005))
+
 
 
