@@ -39,6 +39,9 @@ class NodeList:
         self.index = (self.index + 1) % 2
         self.current_node = self.list[self.index]
         return self.current_node
+    
+    def length(self):
+        return len(self.list)
 
 
 # Thread that responds to incoming peers for information consensus
@@ -88,7 +91,7 @@ class ServerThread(threading.Thread):
                     chainHash = msgList[6]
 
                     if int(blockNumber) == len(self.bc):
-                        gossipMessage = recvmsg + " [Signed by " + str(self.myport) + "]" 
+                        
                         
                         if chainHash != dict_hash(self.bc):
                             reply = "Refused block " + blockNumber + ": Disagreed chain hashcode. Deffering... [Signed by " + str(self.myport) + "]"
@@ -108,7 +111,7 @@ class ServerThread(threading.Thread):
                             if self.verbose:
                                 print("Peer " +  str(self.myport) + ": (Server-thread) Sending message: [" + reply + "]. Hash: " + dict_hash(self.bc))
 
-                        for i in range(0, 1):
+                            gossipMessage = recvmsg + " [Signed by " + str(self.myport) + "]" 
                             self.clientThread.gossip(gossipMessage, addr)
                             if self.verbose:
                                 print("Peer " +  str(self.myport) + ": (Server-thread) Gossip block")
@@ -162,22 +165,23 @@ class ClientThread(threading.Thread):
     
     # Propagate a message, with disregard for a response
     def gossip(self, msg, sender):
-        try:
-            peer = self.peerList.next() 
-            if(sender != peer.port):
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)                   
-                s.settimeout(20)                                                        
-                s.connect((peer.host, peer.port))                                         
-                s.send(msg.encode('ascii'))
-                s.close
-                if self.verbose:
-                    print("Peer " +  str(self.myport) + ": (Client-thread) Sent gossip")
-        except ConnectionRefusedError:
-                if self.verbose:
-                    print("Peer " +  str(self.myport) + ": (Client-thread): Peer at " + str(peer.host) + ", " + str(peer.port) + " appears down (refused)")
-        except ConnectionAbortedError:
-                if self.verbose:
-                    print("Peer " +  str(self.myport) + ": (Client-thread): Peer at " + str(peer.host) + ", " + str(peer.port) + " appears down (abort)")
+        for i in range(0, self.peerList.length()):  
+            peer = self.peerList.next()     
+            try:        
+                if(sender != peer.port):
+                    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)                   
+                    s.settimeout(20)                                                        
+                    s.connect((peer.host, peer.port))                                         
+                    s.send(msg.encode('ascii'))
+                    s.close
+                    if self.verbose:
+                        print("Peer " +  str(self.myport) + ": (Client-thread) Sent gossip to: Peer " + peer.port)
+            except ConnectionRefusedError:
+                    if self.verbose:
+                        print("Peer " +  str(self.myport) + ": (Client-thread): Peer at " + str(peer.host) + ", " + str(peer.port) + " appears down (refused)")
+            except ConnectionAbortedError:
+                    if self.verbose:
+                        print("Peer " +  str(self.myport) + ": (Client-thread): Peer at " + str(peer.host) + ", " + str(peer.port) + " appears down (abort)")
     
     #
     # The client-thread will perform a pseudo-mining to generate blocks to be proposed. The thread is also 
@@ -185,7 +189,6 @@ class ClientThread(threading.Thread):
     # behind by more than 1 block. On a succesful mining (a peer's server thread accepts), we began to gossip
     # this block to our neighbors
     #
-
     def run(self):
         behind = False
         msgrecv = ""
@@ -229,10 +232,10 @@ class ClientThread(threading.Thread):
                             if self.verbose:
                                 print("Peer " +  str(self.myport) + ": (Client-thread) Sending JSON of BC to requesting peer. Hash: " + dict_hash(self.bc))
                                 print("Peer " +  str(self.myport) + ": " + str(self.bc))
-
                     s.close() 
                     if "Agreed" in msgrecv:
-                        self.gossip(msg, peer.port)                  
+                        self.gossip(msg, peer.port)    
+              
             except TypeError:
                 if self.verbose:
                     print("Peer " +  str(self.myport) + ": (Client-thread) Lost connection during process with Peer " + str(peer.port))
@@ -253,7 +256,6 @@ class ClientThread(threading.Thread):
                 if self.verbose:
                     print("Peer " +  str(self.myport) + ": (Client-thread) Peer at " + str(peer.host) + ", " + str(peer.port) + " timed out")
                 peer = self.peerList.next() 
-
             except ConnectionResetError:
                 if self.verbose:
                     print("Peer " +  str(self.myport) + ": (Client-thread) Peer at " + str(peer.host) + ", " + str(peer.port) + " reset")
