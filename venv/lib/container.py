@@ -28,15 +28,16 @@ class Address:
 
 # Circular list to rotate through peer's addresses 
 class NodeList:
-    def __init__(self, addr1, addr2):
+    def __init__(self, addr1, addr2, addr3):
         self.addr1 = addr1
         self.addr2 = addr2
-        self.list = [addr1, addr2]
+        self.addr3 = addr3
+        self.list = [addr1, addr2, addr3]
         self.index = 0
         self.current_node = self.list[self.index]
 
     def next(self):
-        self.index = (self.index + 1) % 2
+        self.index = (self.index + 1) % 3
         self.current_node = self.list[self.index]
         return self.current_node
     
@@ -294,10 +295,10 @@ class MonitorThread(threading.Thread):
     
     
 class Node:                  
-    def __init__(self, myport, port1, port2, verbose):
+    def __init__(self, myport, port1, port2, port3, verbose):
         bc = {}
         self.myport = myport
-        peerList = NodeList(Address(socket.gethostname(), port1), Address(socket.gethostname(), port2))
+        peerList = NodeList(Address(socket.gethostname(), port1), Address(socket.gethostname(), port2), Address(socket.gethostname(), port3))
         client = ClientThread(peerList, bc, myport, verbose)
         server = ServerThread(myport, bc, client, verbose)
         self.monitor = MonitorThread(server, client)

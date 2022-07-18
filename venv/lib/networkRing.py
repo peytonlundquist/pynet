@@ -27,11 +27,11 @@ def print_chains():
             dict(itertools.islice(bc_copy.items(), 12))
             print("Node " + str(node.get_port()) + " blockchain hash (first 12 blocks): " + dict_hash(dict(itertools.islice(bc_copy.items(), 12))))
 
-for i in range(8000, 8005):
-    print("My port: " + str(i) + ". Peers: " + str(i+2) + ", " + str(i+1))
-    node_list.append(Node(i, i+2, i+1, False))
-node_list.append(Node(8005, 8001, 8000, False))
-print("My port: " + str(8005) + ". Peers: " + str(8000) + ", " + str(8001))
+for i in range(8000, 8006):
+    print("My port: " + str(i) + ". Peers: " + str(i+2) + ", " + str(i+1) + ", " + str(i-1))
+    node_list.append(Node(i, i+2, i+1, i-1, False))
+node_list.append(Node(8006, 8001, 8000, 8005, False))
+print("My port: " + str(8005) + ". Peers: " + str(8000) + ", " + str(8001) + ", " + str(8004))
 
 while True:
     time.sleep(1)
