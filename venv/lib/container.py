@@ -273,30 +273,41 @@ class MonitorThread(threading.Thread):
             threading.Thread.__init__(self)
             self.serverThread = serverThread
             self.clientThread = clientThread
+            bc = {}
+            self.bc = bc
         
         def run(self):
             True
             while True:
                 if(len(self.serverThread.getbc()) > len(self.clientThread.getbc())):
                     self.clientThread.setbc(self.serverThread.getbc())
+                    self.bc = self.serverThread.getbc()
                     
                 if(len(self.serverThread.getbc()) < len(self.clientThread.getbc())):
                     self.serverThread.setbc(self.clientThread.getbc())     
+                    self.bc = self.clientThread.getbc()
 
-
+        def get_bc(self):
+            return self.bc
+    
+    
 class Node:                  
     def __init__(self, myport, port1, port2, verbose):
         bc = {}
+        self.myport = myport
         peerList = NodeList(Address(socket.gethostname(), port1), Address(socket.gethostname(), port2))
         client = ClientThread(peerList, bc, myport, verbose)
         server = ServerThread(myport, bc, client, verbose)
-        monitor = MonitorThread(server, client)
+        self.monitor = MonitorThread(server, client)
         client.start()
         server.start()
-        monitor.start()
+        self.monitor.start()
 
     def get_bc(self):
-        return self.bc
+        return self.monitor.get_bc()
+    
+    def get_port(self):
+        return self.myport
         
         
         
