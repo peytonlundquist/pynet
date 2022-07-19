@@ -1,3 +1,4 @@
+import copy
 import json
 from re import S
 import socket
@@ -93,8 +94,10 @@ class ServerThread(threading.Thread):
 
                     if int(blockNumber) == len(self.bc):
                         
+                        temp_bc = copy.deepcopy(self.bc)
+                        temp_bc[blockNumber] = blockValue
                         
-                        if chainHash != dict_hash(self.bc):
+                        if chainHash != dict_hash(temp_bc):
                             reply = "Refused block " + blockNumber + ": Disagreed chain hashcode. Deffering... [Signed by " + str(self.myport) + "]"
                             clientsocket.send(reply.encode('ascii'))
                             
@@ -176,7 +179,7 @@ class ClientThread(threading.Thread):
                     s.send(msg.encode('ascii'))
                     s.close
                     if self.verbose:
-                        print("Peer " +  str(self.myport) + ": (Client-thread) Sent gossip to: Peer " + peer.port)
+                        print("Peer " +  str(self.myport) + ": (Client-thread) Sent gossip to: Peer " + str(peer.port))
             except ConnectionRefusedError:
                     if self.verbose:
                         print("Peer " +  str(self.myport) + ": (Client-thread): Peer at " + str(peer.host) + ", " + str(peer.port) + " appears down (refused)")
@@ -197,7 +200,7 @@ class ClientThread(threading.Thread):
         while True:          
             if(behind == False):
                 rng = np.random.default_rng()
-                num = rng.integers(10)
+                num = rng.integers(5)
                 time.sleep(num)
                 msg = "Mined block " + str(len(self.bc)) + " Value " + str(num) + " Hash: " + dict_hash(self.bc) +" [Signed by " + str(self.myport) + "]"      
                 self.bc[str(len(self.bc))] = str(num)
